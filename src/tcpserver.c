@@ -163,12 +163,11 @@ static void tcplistener_accept_callback(struct ev_loop *loop,
 }
 
 
-tcpserver_t *tcpserver_create(struct ev_loop *loop, void *data) {
+tcpserver_t *tcpserver_create(struct ev_loop *loop) {
 	tcpserver_t *server;
 	server = (tcpserver_t *) malloc(sizeof(tcpserver_t));
 	server->loop = ev_default_loop(0);
 	server->listeners_len = 0;
-	server->data = data;
 	return server;
 }
 
@@ -320,6 +319,17 @@ int tcpserver_bind(tcpserver_t *server,
 	freeaddrinfo(addrs);
 	return 0;
 }
+
+
+void tcpserver_listeners_set_data(tcpserver_t *server, void *data) {
+	int i;
+
+	server->data = data;
+	for (i = 0; i < server->listeners_len; i++) {
+		server->listeners[i]->data = data;
+	}
+}
+
 
 void tcpserver_destroy(tcpserver_t *server) {
 	for (int i = 0; i < server->listeners_len; i++) {

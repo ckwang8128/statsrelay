@@ -21,6 +21,9 @@
 
 #define MAX_UDP_LENGTH 65536
 
+int pid_num;
+stats_per_second_t *stats_per_second;
+
 typedef struct {
 	tcpclient_t client;
 	char *key;
@@ -507,6 +510,8 @@ stats_recv_err:
 	return 1;
 }
 
+#define HOW_MANY_PACKETS_TO_GREEDILY_READ (64)
+
 // TODO: refactor this whole method to share more code with the tcp receiver:
 //  * this shouldn't have to allocate a new buffer -- it should be on the ss
 //  * the line processing stuff should use stats_process_lines()
@@ -514,9 +519,12 @@ int stats_udp_recv(int sd, void *data) {
 	stats_server_t *ss = (stats_server_t *)data;
 	ssize_t bytes_read;
 	char *head, *tail;
+	int packets_read_this_callback = 0;
 
 	static char buffer[MAX_UDP_LENGTH];
 	static char line_buffer[MAX_UDP_LENGTH + 2];
+
+	GREEDILY_READ_ANOTHER_PACKET:;
 
 	bytes_read = read(sd, buffer, MAX_UDP_LENGTH);
 
@@ -525,7 +533,7 @@ int stats_udp_recv(int sd, void *data) {
 		goto udp_recv_err;
 	} else if (bytes_read < 0) {
 		if (errno == EAGAIN) {
-			stats_error_log("stats: interrupted during recvfrom");
+			stats_debug_log("stats: interrupted during recvfrom; end of greedy loop, or another fork()ed instance beat us to it?");
 			goto udp_recv_err;
 		} else {
 			stats_error_log("stats: Error calling recvfrom: %s", strerror(errno));
@@ -533,6 +541,16 @@ int stats_udp_recv(int sd, void *data) {
 		}
 	} else {
 		stats_debug_log("stats: received %zd bytes from udp fd %d", bytes_read, sd);
+	}
+
+	packets_read_this_callback ++;
+
+	stats_per_second[pid_num].live_packets_read ++;
+	stats_per_second[pid_num].live_packets_read_size += bytes_read;
+
+	if (NULL == ss) {
+		stats_error_log("stats: internal error: ss == NULL; somehow received downstream packet before upstream connection established?");
+		goto udp_recv_err;
 	}
 
 	ss->bytes_recv_udp += bytes_read;
@@ -554,6 +572,11 @@ int stats_udp_recv(int sd, void *data) {
 		}
 		offset += line_len + 1;
 	}
+
+	if (packets_read_this_callback < HOW_MANY_PACKETS_TO_GREEDILY_READ) {
+		goto GREEDILY_READ_ANOTHER_PACKET;
+	}
+
 	return 0;
 
 udp_recv_err:

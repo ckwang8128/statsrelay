@@ -11,6 +11,7 @@ static bool g_verbose = 0;
 static enum statsrelay_log_level g_level;
 static int fmt_buf_size = 0;
 static char *fmt_buf = NULL;
+static int openlog_not_called = 1;
 
 void stats_log_verbose(bool verbose) {
 	g_verbose = verbose;
@@ -71,6 +72,11 @@ void stats_vlog(const char *prefix,
 		if (total_written >= fmt_len) {
 			fputc('\n', stderr);
 		}
+	}
+
+	if (openlog_not_called) {
+		openlog_not_called = 0;
+		openlog(NULL, LOG_PID, LOG_DAEMON); // log with PID; useful if fork()ed statsrelay
 	}
 
 	syslog(LOG_INFO, fmt_buf, fmt_len);

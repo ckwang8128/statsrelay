@@ -37,12 +37,11 @@ struct udplistener_t {
 };
 
 
-udpserver_t *udpserver_create(struct ev_loop *loop, void *data) {
+udpserver_t *udpserver_create(struct ev_loop *loop) {
 	udpserver_t *server;
 	server = malloc(sizeof(udpserver_t));
 	server->loop = loop;
 	server->listeners_len = 0;
-	server->data = data;
 	return server;
 }
 
@@ -95,6 +94,29 @@ static udplistener_t *udplistener_create(udpserver_t *server, struct addrinfo *a
 
 	if (listener->sd < 0) {
 		stats_log("udplistener: Error creating socket %s[:%i]: %s", addr_string, port, strerror(errno));
+		free(listener);
+		return NULL;
+	}
+
+	int old_rcv_buffer_size;
+	int old_sock_opt_size = sizeof(old_rcv_buffer_size);
+	getsockopt(listener->sd, SOL_SOCKET, SO_RCVBUF, &old_rcv_buffer_size, &old_sock_opt_size);
+	stats_debug_log("initial udp listening socket receive buf %d\n", old_rcv_buffer_size); // e.g. 124928
+
+	int rcv_buffer_size = 33554432; // cat /proc/sys/net/core/rmem_max
+	if ((setsockopt(listener->sd, SOL_SOCKET, SO_RCVBUF, &rcv_buffer_size, sizeof(rcv_buffer_size))) < 0)
+	{
+		stats_log("udplistener: Error setting SO_RCVBUF on %s[:%i]: %s", addr_string, port, strerror(errno));
+		free(listener);
+		return NULL;
+	}
+
+	int new_rcv_buffer_size;
+	int new_sock_opt_size = sizeof(new_rcv_buffer_size);
+	getsockopt(listener->sd, SOL_SOCKET, SO_RCVBUF, &new_rcv_buffer_size, &new_sock_opt_size);
+	stats_debug_log("new udp listening socket receive buf %d\n", new_rcv_buffer_size); // e.g. 33554432 or twice the size?
+	if (new_rcv_buffer_size < rcv_buffer_size) {
+		stats_log("udplistener: Error setting SO_RCVBUF on %s[:%i]: %s; did you: sysctl -w net.core.rmem_max=33554432 # 32 MB", addr_string, port, strerror(errno));
 		free(listener);
 		return NULL;
 	}
@@ -193,6 +215,16 @@ int udpserver_bind(udpserver_t *server,
 	free(address);
 	freeaddrinfo(addrs);
 	return 0;
+}
+
+
+void udpserver_listeners_set_data(udpserver_t *server, void *data) {
+	int i;
+
+	server->data = data;
+	for (i = 0; i < server->listeners_len; i++) {
+		server->listeners[i]->data = data;
+	}
 }
 
 

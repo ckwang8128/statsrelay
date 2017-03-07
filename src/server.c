@@ -16,7 +16,10 @@ static bool connect_server(struct server *server,
 			   struct proto_config *config,
 			   protocol_parser_t parser,
 			   validate_line_validator_t validator,
-			   const char *name) {
+			   const char *name,
+			   enum connect_server_collection_state state) {
+	stats_debug_log("connect_server(%s, %s)", name, CONNECT_SERVER_COLLECTION_STATE_LISTEN_DOWNSTREAM == state ? "CONNECT_SERVER_COLLECTION_STATE_LISTEN_DOWNSTREAM" : "CONNECT_SERVER_COLLECTION_STATE_UPSTREAM");
+
 	if (config->ring->size == 0) {
 		stats_log("%s has no backends, skipping", name);
 		return false;
@@ -24,35 +27,49 @@ static bool connect_server(struct server *server,
 
 	struct ev_loop *loop = ev_default_loop(0);
 
-	server->server = stats_server_create(
-		loop, config, parser, validator);
+	if (CONNECT_SERVER_COLLECTION_STATE_LISTEN_DOWNSTREAM == state) {
+		server->ts = tcpserver_create(loop);
+		if (server->ts == NULL) {
+			stats_error_log("failed to create tcpserver");
+			return false;
+		}
 
-	server->enabled = true;
+		server->us = udpserver_create(loop);
+		if (server->us == NULL) {
+			stats_error_log("failed to create udpserver");
+			return false;
+		}
 
-	if (server->server == NULL) {
-		stats_error_log("main: Unable to create stats_server");
-		return false;
-	}
-	server->ts = tcpserver_create(loop, server->server);
-	if (server->ts == NULL) {
-		stats_error_log("failed to create tcpserver");
-		return false;
-	}
-
-	server->us = udpserver_create(loop, server->server);
-	if (server->us == NULL) {
-		stats_error_log("failed to create udpserver");
-		return false;
+		if (tcpserver_bind(server->ts, config->bind, stats_connection, stats_recv) != 0) {
+			stats_error_log("unable to bind tcp %s", config->bind);
+			return false;
+		}
+		if (udpserver_bind(server->us, config->bind, stats_udp_recv) != 0) {
+			stats_error_log("unable to bind udp %s", config->bind);
+			return false;
+		}
 	}
 
-	if (tcpserver_bind(server->ts, config->bind, stats_connection, stats_recv) != 0) {
-		stats_error_log("unable to bind tcp %s", config->bind);
-		return false;
+	if (CONNECT_SERVER_COLLECTION_STATE_UPSTREAM == state) {
+		server->server = stats_server_create(
+			loop, config, parser, validator);
+
+		server->enabled = true;
+
+		if (server->server == NULL) {
+			stats_error_log("main: Unable to create stats_server");
+			return false;
+		}
+
+		if (server->ts == NULL || server->us == NULL) {
+			stats_error_log("main: Unable to create stats_server; please call connect_server(..., CONNECT_SERVER_COLLECTION_STATE_LISTEN_DOWNSTREAM) first");
+			return false;
+		}
+
+		tcpserver_listeners_set_data(server->ts, server->server);
+		udpserver_listeners_set_data(server->us, server->server);
 	}
-	if (udpserver_bind(server->us, config->bind, stats_udp_recv) != 0) {
-		stats_error_log("unable to bind udp %s", config->bind);
-		return false;
-	}
+
 	return true;
 }
 
@@ -80,18 +97,24 @@ void init_server_collection(struct server_collection *server_collection,
 }
 
 bool connect_server_collection(struct server_collection *server_collection,
-			       struct config *config) {
+			       struct config *config,
+			       enum connect_server_collection_state state) {
 	bool enabled_any = false;
+
 	enabled_any |= connect_server(&server_collection->carbon_server,
 				      &config->carbon_config,
 				      protocol_parser_carbon,
 				      validate_carbon,
-				      "carbon");
+				      "carbon",
+				      state);
+
 	enabled_any |= connect_server(&server_collection->statsd_server,
 				      &config->statsd_config,
 				      protocol_parser_statsd,
 				      validate_statsd,
-				      "statsd");
+				      "statsd",
+				      state);
+
 	if (!enabled_any) {
 		stats_error_log("failed to enable any backends");
 	}

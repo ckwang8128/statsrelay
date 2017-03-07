@@ -9,10 +9,11 @@
 
 typedef struct udpserver_t udpserver_t;
 
-udpserver_t *udpserver_create(struct ev_loop *loop, void *data);
+udpserver_t *udpserver_create(struct ev_loop *loop);
 int udpserver_bind(udpserver_t *server,
 		   const char *address_and_port,
 		   int (*cb_recv)(int, void *));
+void udpserver_listeners_set_data(udpserver_t *server, void *data);
 void udpserver_destroy(udpserver_t *server);
 
 #endif

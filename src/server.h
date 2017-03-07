@@ -7,6 +7,11 @@
 
 #include <stdbool.h>
 
+enum connect_server_collection_state {
+	CONNECT_SERVER_COLLECTION_STATE_LISTEN_DOWNSTREAM = 1,
+	CONNECT_SERVER_COLLECTION_STATE_UPSTREAM
+};
+
 struct server {
 	bool enabled;
 	stats_server_t *server;
@@ -26,7 +31,8 @@ void init_server_collection(struct server_collection *server_collection,
 			    const char *filename);
 
 bool connect_server_collection(struct server_collection *server_collection,
-			       struct config *config);
+			       struct config *config,
+			       enum connect_server_collection_state);
 
 void destroy_server_collection(struct server_collection *server_collection);
 
