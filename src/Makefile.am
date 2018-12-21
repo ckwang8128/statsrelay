@@ -6,6 +6,6 @@ stathasher_SOURCES=hashlib.c hashring.c list.c log.c yaml_config.c stathasher.c
 stresstest_SOURCES=stresstest.c
 
 check_PROGRAMS=test_hashlib test_hashring
-TESTS=$(check_PROGRAMS) tests/test_endtoend.py
+TESTS=$(check_PROGRAMS)
 test_hashlib_SOURCES=tests/test_hashlib.c hashlib.c
 test_hashring_SOURCES=tests/test_hashring.c hashlib.c hashring.c list.c log.c
