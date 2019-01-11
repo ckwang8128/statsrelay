@@ -103,7 +103,7 @@ static udplistener_t *udplistener_create(udpserver_t *server, struct addrinfo *a
 	getsockopt(listener->sd, SOL_SOCKET, SO_RCVBUF, &old_rcv_buffer_size, &old_sock_opt_size);
 	stats_debug_log("initial udp listening socket receive buf %d\n", old_rcv_buffer_size); // e.g. 124928
 
-	int rcv_buffer_size = 134217728; // cat /proc/sys/net/core/rmem_max
+	int rcv_buffer_size = 536870912; // cat /proc/sys/net/core/rmem_max
 	if ((setsockopt(listener->sd, SOL_SOCKET, SO_RCVBUF, &rcv_buffer_size, sizeof(rcv_buffer_size))) < 0)
 	{
 		stats_log("udplistener: Error setting SO_RCVBUF on %s[:%i]: %s", addr_string, port, strerror(errno));
@@ -114,9 +114,9 @@ static udplistener_t *udplistener_create(udpserver_t *server, struct addrinfo *a
 	int new_rcv_buffer_size;
 	int new_sock_opt_size = sizeof(new_rcv_buffer_size);
 	getsockopt(listener->sd, SOL_SOCKET, SO_RCVBUF, &new_rcv_buffer_size, &new_sock_opt_size);
-	stats_debug_log("new udp listening socket receive buf %d\n", new_rcv_buffer_size); // e.g. 134217728 or twice the size?
+	stats_debug_log("new udp listening socket receive buf %d\n", new_rcv_buffer_size); // e.g. 536870912 or twice the size?
 	if (new_rcv_buffer_size < rcv_buffer_size) {
-		stats_log("udplistener: Error setting SO_RCVBUF on %s[:%i]: %s; did you: sysctl -w net.core.rmem_max=134217728 # 128 MB", addr_string, port, strerror(errno));
+		stats_log("udplistener: Error setting SO_RCVBUF on %s[:%i]: %s; did you: sysctl -w net.core.rmem_max=536870912 # 512 MB", addr_string, port, strerror(errno));
 		free(listener);
 		return NULL;
 	}
