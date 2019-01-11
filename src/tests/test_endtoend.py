@@ -8,6 +8,7 @@ import sys
 import tempfile
 import time
 import unittest
+import syslog
 
 from collections import defaultdict
 
@@ -22,6 +23,8 @@ if QUIET:
 else:
     POPEN_KW = {}
 
+syslog.openlog('test_endtoend.py', syslog.LOG_PID, syslog.LOG_DAEMON)
+syslog.syslog('----------------------------------------------------------------------------------------------------')
 
 class TestCase(unittest.TestCase):
 
@@ -34,6 +37,7 @@ class TestCase(unittest.TestCase):
         super(TestCase, self).tearDown()
         if self.proc:
             try:
+                syslog.syslog('self.proc.kill()')
                 self.proc.kill()
             except OSError:
                 pass
@@ -41,15 +45,19 @@ class TestCase(unittest.TestCase):
     def launch_process(self, config_path):
         args = ['./statsrelay', '--verbose', '--log-level=DEBUG']
         args.append('--config=' + config_path)
+        syslog.syslog('launching subprocess: %s' % args)
         self.proc = subprocess.Popen(args, **POPEN_KW)
         time.sleep(0.5)
 
     def reload_process(self, proc):
+        syslog.syslog('proc.send_signal(signal.SIGHUP)')
         proc.send_signal(signal.SIGHUP)
         time.sleep(0.1)
 
     def check_recv(self, fd, expected, size=1024):
+        syslog.syslog('fd.recv(%d) # %d=fileno()' % (size, fd.fileno()))
         bytes_read = fd.recv(size)
+        syslog.syslog('fd.recv(%d) # >%s< bytes_read, >%s< expected' % (size, bytes_read, expected))
         self.assertEqual(bytes_read, expected)
 
     def recv_status(self, fd):
@@ -57,6 +65,7 @@ class TestCase(unittest.TestCase):
 
     @contextlib.contextmanager
     def generate_config(self, mode):
+        syslog.syslog('generate_config(..., %s)' % mode.lower())
         if mode.lower() == 'tcp':
             sock_type = socket.SOCK_STREAM
             config_path = 'tests/statsrelay.yaml'
@@ -286,6 +295,7 @@ class StatsdTestCase(TestCase):
 class CarbonTestCase(TestCase):
 
     def run_checks(self, fd, proto):
+        syslog.syslog('run_checks(%s)' % proto)
         sender = self.connect('udp', self.bind_carbon_port)
         sender.sendall('1 2 3\n')
         self.check_recv(fd, '1 2 3\n')
@@ -303,7 +313,9 @@ class CarbonTestCase(TestCase):
         sender.sendall('1 2 3\n')
         self.check_recv(fd, '1 2 3\n')
 
+        syslog.syslog('self.connect(tcp, self.bind_carbon_port)')
         sender = self.connect('tcp', self.bind_carbon_port)
+        syslog.syslog('sender.sendall(status)')
         sender.sendall('status\n')
         status = self.recv_status(sender)
         sender.close()
@@ -314,6 +326,7 @@ class CarbonTestCase(TestCase):
                 break
             if not line.startswith('backend:'):
                 continue
+            syslog.syslog('line: %s' % line)
             backend, key, valuetype, value = line.split(' ', 3)
             backend = backend.split(':', 1)[1]
             backends[backend][key] = int(value)
@@ -327,12 +340,14 @@ class CarbonTestCase(TestCase):
 
     def test_carbon_tcp(self):
         with self.generate_config('tcp') as config:
+            syslog.syslog('test_carbon_tcp()')
             self.launch_process(config)
             fd, addr = self.carbon_listener.accept()
             self.run_checks(fd, 'tcp')
 
     def test_carbon_udp(self):
         with self.generate_config('udp') as config:
+            syslog.syslog('test_carbon_udp()')
             self.launch_process(config)
             self.run_checks(self.carbon_listener, 'udp')
 
@@ -365,6 +380,7 @@ class StathasherTests(unittest.TestCase):
 
 
 def main():
+    syslog.syslog('starting')
     unittest.main()
 
 

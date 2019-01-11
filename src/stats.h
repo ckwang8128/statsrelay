@@ -10,6 +10,18 @@
 
 typedef struct stats_server_t stats_server_t;
 
+typedef struct {
+	uint64_t live_packets_read;
+	uint64_t live_packets_read_size;
+	uint64_t last_packets_read;
+	uint64_t last_packets_read_size;
+} stats_per_second_t;
+
+#define PID_MAX (32)
+
+extern int pid_num;
+extern stats_per_second_t *stats_per_second;
+
 stats_server_t *stats_server_create(
 	struct ev_loop *loop,
 	struct proto_config *config,
